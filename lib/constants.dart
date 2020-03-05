@@ -1,0 +1,2 @@
+const int FACTORY_COST = 10;
+const int FACTORY_FACTORY_COST = FACTORY_COST * 10;
