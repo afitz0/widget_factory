@@ -1,165 +1,182 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:widget_factory/constants.dart';
 import 'package:provider/provider.dart';
+import 'package:widget_factory/constants.dart';
 
-void main() => runApp(MyApp());
+import 'package:widget_factory/game_state.dart';
 
-class GameState extends ChangeNotifier {
-  int _widgets;
-  int _factories;
-  int _factoryFactories;
-  String _statusMessage;
+void main() => runApp(
+      ChangeNotifierProvider(
+        create: (_) => GameState(),
+        child: App(),
+      ),
+    );
 
-  GameState() {
-    reset();
-  }
+class App extends StatelessWidget {
+  const App({Key? key}) : super(key: key);
 
-  int get widgets => _widgets;
-  int get factories => _factories;
-  int get factoryFactories => _factoryFactories;
-  String get statusMessage => _statusMessage;
-
-  void update() {
-    _widgets += _factories;
-    _factories += _factoryFactories;
-    notifyListeners();
-  }
-
-  void createWidgets(int count) {
-    _widgets += count;
-    notifyListeners();
-  }
-
-  void buildFactoryFactories(int count) {
-    int cost = FACTORY_FACTORY_COST * count;
-    if (_widgets >= cost) {
-      _factoryFactories += count;
-      _widgets -= cost;
-    } else {
-      _statusMessage = "Not enough widgets (need: $FACTORY_FACTORY_COST).";
-    }
-    notifyListeners();
-  }
-
-  void buildFactories(int count) {
-    int cost = FACTORY_COST * count;
-    if (_widgets >= cost) {
-      _factories += count;
-      _widgets -= cost;
-    } else {
-      _statusMessage = "Not enough widgets (need: $FACTORY_COST).";
-    }
-    notifyListeners();
-  }
-
-  void reset() {
-    _factories = 0;
-    _factoryFactories = 0;
-    _widgets = 0;
-    _statusMessage = "";
-  }
-}
-
-class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: ChangeNotifierProvider(
-        create: (context) => GameState(),
-        child: MyHomePage(),
-      ),
+      home: WidgetFactory(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
+class WidgetFactory extends StatefulWidget {
+  const WidgetFactory({Key? key}) : super(key: key);
+
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  _WidgetFactoryState createState() => _WidgetFactoryState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  Timer _timer;
+class _WidgetFactoryState extends State<WidgetFactory> {
+  Timer? _timer;
 
   @override
   void initState() {
-    _timer = Timer.periodic(Duration(seconds: 1), updateValue);
-
     super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Consumer<GameState>(builder: (context, game, child) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text('Widget count: ${game.widgets}'),
-                RaisedButton(
-                  child: Text("Create Widget"),
-                  onPressed: () => game.createWidgets(1),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Visibility(
+              visible: Provider.of<GameState>(context).isLowMemory,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Flexible(
+                  child: Text(
+                    "!WARNING!\nDangerously low memory. Build more RAM modules to avoid catastrophic meltdown.\n!WARNING!",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-                Spacer(),
-                Buttons(),
-                Spacer(),
-                RaisedButton(
-                  child: Text("Reset"),
-                  onPressed: () => game.reset(),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => createAndStart(context),
+                      child: Text("Build Widget"),
+                    ),
+                    ...buildAdvancedButtons(context),
+                  ],
                 ),
-                Text(
-                  game.statusMessage,
-                  style: TextStyle(color: Theme.of(context).errorColor),
-                ),
+                Provider.of<GameState>(context, listen: false).getStats(),
               ],
-            );
-          }),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void updateValue(Timer timer) {
-    print("Tick: ${timer.tick}");
-    Provider.of<GameState>(context).update();
+  void createAndStart(BuildContext context) {
+    Provider.of<GameState>(context, listen: false).createWidget();
+    if (_timer == null) {
+      _timer = Timer.periodic(Duration(milliseconds: TICK_RATE_MS), (timer) {
+        setState(() {
+          Provider.of<GameState>(context, listen: false).tick();
+        });
+      });
+    }
+  }
+
+  List<Widget> buildAdvancedButtons(BuildContext context) {
+    List<Widget> newButtons = [];
+    double widgetsBuilt = Provider.of<GameState>(context).widgets;
+    bool firstFactory = Provider.of<GameState>(context).factoriesTriggered;
+
+    if (Provider.of<GameState>(context).factoriesTriggered) {
+      newButtons.add(Factories());
+    }
+
+    if (Provider.of<GameState>(context).ramTriggered) {
+      newButtons.add(LowMemory());
+    }
+
+    return newButtons;
   }
 }
 
-class Buttons extends StatelessWidget {
+class LowMemory extends StatelessWidget {
+  const LowMemory({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
-    final game = Provider.of<GameState>(context);
-
     return Column(
-      children: <Widget>[
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
-            RaisedButton(
-              child: Text("Build Widget Factory"),
-              onPressed: () => game.buildFactories(1),
+          children: [
+            ElevatedButton(
+              onPressed:
+                  Provider.of<GameState>(context).widgets < RAM_FACTORY_COST
+                      ? null
+                      : () => Provider.of<GameState>(context, listen: false)
+                          .convertFactoryToRam(),
+              child: Text("Convert Factory to RAM"),
             ),
-            Text("Count: ${game.factories}")
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
-            RaisedButton(
-              child: Text("Build Factory Factory"),
-              onPressed: () => game.buildFactoryFactories(1),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4.0),
+              child: Text(Provider.of<GameState>(context).ram.toString()),
             ),
-            Text("Count: ${game.factoryFactories}")
           ],
         ),
       ],
+    );
+  }
+}
+
+class Factories extends StatelessWidget {
+  const Factories({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed:
+                    Provider.of<GameState>(context).widgets < FACTORY_COST
+                        ? null
+                        : () => Provider.of<GameState>(context, listen: false)
+                            .createFactory(),
+                child: Text("Build Factory"),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child:
+                    Text(Provider.of<GameState>(context).factories.toString()),
+              )
+            ],
+          ),
+          Text("Cost: $FACTORY_COST"),
+        ],
+      ),
     );
   }
 }
